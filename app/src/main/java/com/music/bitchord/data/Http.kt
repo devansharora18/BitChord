@@ -4,6 +4,7 @@ import android.util.Log
 import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.ResponseBody
 import okio.Buffer
 import okio.BufferedSource
@@ -140,4 +141,37 @@ object Http {
         .addInterceptor(webDavInterceptor)
         .apply { if (USAGE_LOGGING_ENABLED) addNetworkInterceptor(usageInterceptor) }
         .build()
+
+    /**
+     * A GET returning the body, or null for a non-2xx or a throw. For the
+     * catalogue services whose failures are allowed to be silent — nothing here
+     * is ours to depend on, and a caller usually has somewhere better to go.
+     */
+    fun get(url: String, headers: Map<String, String> = emptyMap()): String? {
+        val request = Request.Builder().url(url).apply {
+            headers.forEach { (name, value) -> header(name, value) }
+        }.build()
+        return runCatching {
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) response.body?.string() else null
+            }
+        }.getOrNull()
+    }
+
+    /**
+     * Same as [get], but keeps the status code on failure. For the callers that
+     * have to tell "this isn't a 2xx" apart from "this was never a 2xx" — a dead
+     * session reads as 401 and a private playlist as 404, and both collapse into
+     * the same null.
+     */
+    fun getWithStatus(url: String, headers: Map<String, String> = emptyMap()): Pair<Int, String?> {
+        val request = Request.Builder().url(url).apply {
+            headers.forEach { (name, value) -> header(name, value) }
+        }.build()
+        return runCatching {
+            client.newCall(request).execute().use { response ->
+                response.code to if (response.isSuccessful) response.body?.string() else null
+            }
+        }.getOrDefault(-1 to null)
+    }
 }

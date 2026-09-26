@@ -268,11 +268,7 @@ object SpotifyCanvas {
      * minting one succeeds; omitted otherwise rather than failing the call,
      * since some of these endpoints still answer without it.
      */
-    private fun authHeaders(token: String): Map<String, String> {
-        val headers = mutableMapOf("Authorization" to "Bearer $token", "User-Agent" to CANVAS_UA)
-        SpotifyToken.clientToken()?.let { headers["Client-Token"] = it }
-        return headers
-    }
+    private fun authHeaders(token: String): Map<String, String> = SpotifyToken.authHeaders(token)
 
     private fun isMatch(gotName: String, gotArtists: List<String>, wantName: String, wantArtist: String): Boolean {
         if (gotName.normalizeForMatch() != wantName.normalizeForMatch()) return false

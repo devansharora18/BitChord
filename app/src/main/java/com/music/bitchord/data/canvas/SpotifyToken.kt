@@ -329,6 +329,23 @@ internal object SpotifyToken {
     }
 
     /**
+     * The header set api.spotify.com wants: [accessToken] as the bearer, plus
+     * [clientToken] on top of it.
+     *
+     * The client token is not optional in practice — api.spotify.com and spclient
+     * both turn away a request carrying only the bearer with a 429, which reads
+     * exactly like rate limiting on the very first request of a session until you
+     * notice that's what it always says. Sent whenever minting one succeeds;
+     * omitted otherwise rather than failing the call, since some endpoints still
+     * answer without it.
+     */
+    fun authHeaders(token: String): Map<String, String> {
+        val headers = mutableMapOf("Authorization" to "Bearer $token", "User-Agent" to CANVAS_UA)
+        clientToken()?.let { headers["Client-Token"] = it }
+        return headers
+    }
+
+    /**
      * [SessionInfo.clientVersion] and [SessionInfo.deviceId] both come off the
      * plain, unauthenticated web player page — the client version from a JSON
      * blob it embeds for itself, the device id from the `sp_t` cookie it hands
