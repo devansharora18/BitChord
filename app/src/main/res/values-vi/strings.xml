@@ -1228,5 +1228,22 @@
     <string name="spotify_canvas_auto_hide_subtitle">Thu gọn nửa trình phát sau 5 giây khi Spotify Canvas đang phát</string>
     <string name="prioritize_spotify_canvas">Ưu tiên Spotify Canvas</string>
     <string name="prioritize_spotify_canvas_subtitle">Thử Spotify trước Apple Music và các nhà cung cấp ảnh bìa động khác</string>
+    <string name="spotify_import">Nhập từ Spotify</string>
+    <string name="spotify_import_subtitle">Dán liên kết playlist</string>
+    <string name="spotify_import_link_hint">Liên kết playlist hoặc album Spotify</string>
+    <string name="spotify_import_action">Nhập</string>
+    <string name="spotify_import_reading">Đang đọc playlist…</string>
+    <string name="spotify_import_matching">Đang tìm từng bài hát… %1$d/%2$d</string>
+    <string name="spotify_import_writing">Đang thêm bài hát… %1$d/%2$d</string>
+    <string name="spotify_import_ready">Sẽ thêm %1$d/%2$d bài hát</string>
+    <string name="spotify_import_missed">Không tìm thấy %1$d bài</string>
+    <string name="spotify_import_limit">Spotify chỉ trả về tối đa 100 bài hát cho mỗi liên kết</string>
+    <string name="spotify_import_done">Đã thêm %1$d bài hát</string>
+    <string name="spotify_import_short">Đã thêm %1$d/%2$d — phần còn lại bị từ chối</string>
+    <string name="spotify_import_bad_link">Đây không phải liên kết playlist hoặc album của Spotify</string>
+    <string name="spotify_import_unreadable">Không đọc được playlist đó — có thể nó ở chế độ riêng tư</string>
+    <string name="spotify_import_unreachable">Không kết nối được với Spotify. Hãy thử lại.</string>
+    <string name="spotify_import_nothing_matched">Không tìm thấy bài hát nào</string>
+    <string name="spotify_import_write_failed">Không tạo được playlist</string>
 
 </resources>
