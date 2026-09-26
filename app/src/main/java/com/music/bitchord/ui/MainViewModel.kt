@@ -43,6 +43,12 @@ import com.music.bitchord.data.model.SongMenu
 import com.music.bitchord.data.model.SubscriptionState
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.model.UserPlaylist
+import com.music.bitchord.data.spotify.SpotifyEmbed
+import com.music.bitchord.data.spotify.SpotifyFetch
+import com.music.bitchord.data.spotify.SpotifyImportDraft
+import com.music.bitchord.data.spotify.SpotifyImportState
+import com.music.bitchord.data.spotify.SpotifyImporter
+import com.music.bitchord.data.spotify.SpotifyLink
 import com.music.bitchord.data.model.SearchHistoryEntity
 import com.music.bitchord.data.model.EntityType
 import com.music.bitchord.data.settings.SearchHistory
@@ -785,6 +791,70 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _playlistsLoading = MutableStateFlow(false)
     val playlistsLoading: StateFlow<Boolean> = _playlistsLoading.asStateFlow()
+
+    /**
+     * The Spotify import in progress, from the Library tile to the finished
+     * playlist. One slot rather than a queue: the tile is a single control, and
+     * two half-finished imports of somebody else's playlist is not a state worth
+     * holding.
+     */
+    private val _spotifyImport = MutableStateFlow<SpotifyImportState>(SpotifyImportState.Idle)
+    val spotifyImport: StateFlow<SpotifyImportState> = _spotifyImport.asStateFlow()
+
+    /** Closes the sheet and abandons whatever stage the import had reached. */
+    fun dismissSpotifyImport() {
+        _spotifyImport.value = SpotifyImportState.Idle
+    }
+
+    /**
+     * Reads a pasted Spotify link and matches every track in it.
+     *
+     * Signing in is required before this is worth starting: the result is a
+     * playlist on this account, and matching a hundred tracks to find out the
+     * listener cannot keep any of them would be the app's most expensive way to
+     * say no.
+     */
+    fun importFromSpotify(link: String) {
+        if (!requireSignIn()) return
+        val ref = SpotifyLink.parse(link)
+        if (ref == null) {
+            _spotifyImport.value = SpotifyImportState.Failed(SpotifyImportState.Failure.BadLink)
+            return
+        }
+        viewModelScope.launch {
+            _spotifyImport.value = SpotifyImportState.Reading
+            val read = SpotifyEmbed.fetch(ref)
+            if (read !is SpotifyFetch.Loaded) {
+                _spotifyImport.value = SpotifyImportState.Failed(
+                    when (read) {
+                        SpotifyFetch.Unreadable -> SpotifyImportState.Failure.Unreadable
+                        else -> SpotifyImportState.Failure.Unreachable
+                    },
+                )
+                return@launch
+            }
+            val collection = read.collection
+            val matches = SpotifyImporter.match(collection.tracks) { done, total ->
+                // Replaced rather than merged: the states are a progression, and a
+                // late report from a superseded run must not walk this backwards.
+                if (_spotifyImport.value is SpotifyImportState.Matching) {
+                    _spotifyImport.value = SpotifyImportState.Matching(done, total)
+                }
+            }
+            _spotifyImport.value = if (matches.none { it.song != null }) {
+                SpotifyImportState.Failed(SpotifyImportState.Failure.NothingMatched)
+            } else {
+                SpotifyImportState.Ready(
+                    SpotifyImportDraft(
+                        title = collection.title,
+                        artworkUrl = collection.artworkUrl,
+                        matches = matches,
+                        atTrackLimit = collection.atTrackLimit,
+                    ),
+                )
+            }
+        }
+    }
 
     /** Re-fetched rather than cached for the session: playlists are edited here. */
     fun loadPlaylists() {
