@@ -13,6 +13,7 @@ import com.music.bitchord.auth.adjacentProfile
 import com.music.bitchord.data.AppUpdateChecker
 import com.music.bitchord.data.LocalMediaRepository
 import com.music.bitchord.data.LikeState
+import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.YtMusicRepository
 import com.music.bitchord.data.lyrics.EmbeddedLyrics
 import com.music.bitchord.data.lyrics.LyricLine
@@ -807,6 +808,57 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Writes the draft out as a playlist on this account.
+     *
+     * The tracks go in batches rather than as one request. The edit endpoint
+     * takes an action per track and has only ever been asked for one here, so
+     * what it does with a hundred is not something this app has watched happen;
+     * a playlist of a hundred sent as one request is a request that either works
+     * or takes the whole import down with it. A refused batch is counted and
+     * reported instead — see [SpotifyImportState.Done].
+     */
+    fun confirmSpotifyImport(privacy: PlaylistPrivacy) {
+        if (!requireSignIn()) return
+        val draft = (_spotifyImport.value as? SpotifyImportState.Ready)?.draft ?: return
+        val videoIds = draft.matched.map { it.videoId }
+        if (videoIds.isEmpty()) return
+        viewModelScope.launch {
+            var added = 0
+            val first = videoIds.take(IMPORT_BATCH)
+            val created = YtMusicRepository.createPlaylist(
+                title = draft.title,
+                privacy = privacy,
+                videoIds = first,
+            ).getOrElse {
+                _spotifyImport.value = SpotifyImportState.Failed(SpotifyImportState.Failure.WriteFailed)
+                return@launch
+            }
+            added += first.size
+            _spotifyImport.value = SpotifyImportState.Importing(added, videoIds.size)
+
+            for (batch in videoIds.drop(first.size).chunked(IMPORT_BATCH)) {
+                // A refused batch ends the walk: the endpoint rejects the whole
+                // edit rather than part of it, so carrying on would only spend
+                // requests the account is already being stingy with.
+                if (YtMusicRepository.addToPlaylist(created, batch).isFailure) {
+                    TrackLog.w(TAG, "spotify import: batch of ${batch.size} refused; stopped at $added")
+                    break
+                }
+                added += batch.size
+                _spotifyImport.value = SpotifyImportState.Importing(added, videoIds.size)
+            }
+
+            onPlaylistCreated(
+                playlistId = created,
+                title = draft.title,
+                subtitle = "$added ${if (added == 1) "song" else "songs"}",
+                thumbnailUrl = draft.artworkUrl,
+            )
+            _spotifyImport.value = SpotifyImportState.Done(created, added, videoIds.size)
+        }
+    }
+
+    /**
      * Reads a pasted Spotify link and matches every track in it.
      *
      * Signing in is required before this is worth starting: the result is a
@@ -982,43 +1034,62 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 videoIds = listOfNotNull(song?.videoId),
             ).fold(
                 onSuccess = { playlistId ->
-                    // Nothing to look up for a playlist this account has just
-                    // made: it is the owner by construction, so its card is
-                    // editable the moment it appears rather than one request
-                    // after someone holds it.
-                    setPlaylistOwned("VL$playlistId", true)
-                    libraryStale = true
-                    val created = UserPlaylist(
+                    onPlaylistCreated(
                         playlistId = playlistId,
                         title = name,
-                        // Only what this request itself establishes. Both
-                        // surfaces that draw it leave a blank one out, so an
-                        // unseeded playlist gets a card of just its name rather
-                        // than a guess at what the feed will call it.
                         subtitle = if (song != null) "1 song" else "",
                         thumbnailUrl = song?.thumbnailUrl,
                     )
-                    // Drawn from what was just sent rather than waited for: the
-                    // library feed does not have this playlist yet, and the
-                    // fetch that used to run here answered without it — see
-                    // [editPlaylistShelf]. Leads the shelf because it is the
-                    // newest, which is the order the feed itself comes in.
-                    _playlists.value = listOf(created) +
-                        _playlists.value.filterNot { it.playlistId == created.playlistId }
-                    editPlaylistShelf { items ->
-                        listOf(
-                            ShelfItem(
-                                title = created.title,
-                                subtitle = created.subtitle,
-                                thumbnailUrl = created.thumbnailUrl,
-                                videoId = null,
-                                browseId = created.browseId,
-                            ),
-                        ) + items.filterNot { it.browseId == created.browseId }
-                    }
                 },
                 onFailure = {},
             )
+        }
+    }
+
+    /**
+     * A playlist this account has just made, put where every surface that lists
+     * playlists expects to find it.
+     *
+     * Shared with the Spotify import, which creates playlists the same way and
+     * would otherwise repeat the four steps below.
+     *
+     * [subtitle] is only what the creating request itself established. Both
+     * surfaces that draw it leave a blank one out, so an unseeded playlist gets a
+     * card of just its name rather than a guess at what the feed will call it.
+     */
+    private fun onPlaylistCreated(
+        playlistId: String,
+        title: String,
+        subtitle: String,
+        thumbnailUrl: String?,
+    ) {
+        // Nothing to look up for a playlist this account has just made: it is the
+        // owner by construction, so its card is editable the moment it appears
+        // rather than one request after someone holds it.
+        setPlaylistOwned("VL$playlistId", true)
+        libraryStale = true
+        val created = UserPlaylist(
+            playlistId = playlistId,
+            title = title,
+            subtitle = subtitle,
+            thumbnailUrl = thumbnailUrl,
+        )
+        // Drawn from what was just sent rather than waited for: the library feed
+        // does not have this playlist yet, and the fetch that used to run here
+        // answered without it — see [editPlaylistShelf]. Leads the shelf because
+        // it is the newest, which is the order the feed itself comes in.
+        _playlists.value = listOf(created) +
+            _playlists.value.filterNot { it.playlistId == created.playlistId }
+        editPlaylistShelf { items ->
+            listOf(
+                ShelfItem(
+                    title = created.title,
+                    subtitle = created.subtitle,
+                    thumbnailUrl = created.thumbnailUrl,
+                    videoId = null,
+                    browseId = created.browseId,
+                ),
+            ) + items.filterNot { it.browseId == created.browseId }
         }
     }
 
@@ -2136,6 +2207,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     companion object {
+        /**
+         * Tracks written per request when a Spotify import lands.
+         *
+         * Not tuned against a measured limit — the edit endpoint has never been
+         * asked for more than one track here, and a smaller batch is the safe
+         * side of an unknown. Two requests cover a full import.
+         */
+        private const val IMPORT_BATCH = 50
+
+        private const val TAG = "BitChord"
+
         /**
          * How long a keystroke waits before the typeahead is asked about it.
          *

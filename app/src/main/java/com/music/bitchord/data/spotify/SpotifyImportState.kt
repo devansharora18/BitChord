@@ -48,6 +48,14 @@ sealed interface SpotifyImportState {
     /** Writing the playlist. */
     data class Importing(val done: Int, val total: Int) : SpotifyImportState
 
+    /**
+     * The playlist exists. [added] is below [requested] when a batch was refused,
+     * which is stated rather than smoothed over — a silent shortfall would leave
+     * the listener believing a track they can see on Spotify is in a playlist
+     * that does not hold it.
+     */
+    data class Done(val playlistId: String, val added: Int, val requested: Int) : SpotifyImportState
+
     data class Failed(val reason: Failure) : SpotifyImportState
 
     enum class Failure {
@@ -62,5 +70,8 @@ sealed interface SpotifyImportState {
 
         /** Nothing in the catalogue was confidently the same recording. */
         NothingMatched,
+
+        /** YouTube Music refused the playlist itself, so there is nothing to show. */
+        WriteFailed,
     }
 }
