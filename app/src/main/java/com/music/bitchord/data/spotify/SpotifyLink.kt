@@ -1,8 +1,15 @@
 package com.music.bitchord.data.spotify
 
-/** What a Spotify link points at. Only the two kinds an import can act on. */
+/**
+ * What a Spotify link points at.
+ *
+ * [Kind.UNKNOWN] is a bare id, which says nothing about what it names — the same
+ * 22 characters can be a playlist or an album, and only the page itself knows
+ * which. It is carried through rather than guessed at, and resolved on the first
+ * request; see `SpotifyEmbed`.
+ */
 data class SpotifyRef(val id: String, val kind: Kind) {
-    enum class Kind { PLAYLIST, ALBUM }
+    enum class Kind { PLAYLIST, ALBUM, UNKNOWN }
 }
 
 /**
@@ -31,7 +38,11 @@ internal object SpotifyLink {
     fun parse(input: String): SpotifyRef? {
         val text = input.trim()
         if (text.isEmpty()) return null
-        if (!text.contains("://")) return parseUri(text)
+        if (!text.contains("://")) {
+            // A bare id, or a `spotify:` URI. Only the latter names a kind.
+            return parseUri(text)
+                ?: text.takeIf { ID.matches(it) }?.let { SpotifyRef(it, SpotifyRef.Kind.UNKNOWN) }
+        }
 
         val afterScheme = text.substringAfter("://")
         val host = afterScheme.substringBefore('/').substringBefore(':').lowercase()

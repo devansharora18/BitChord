@@ -88,6 +88,23 @@ class PlaylistLinkTest {
         assertNull(SpotifyLink.parse(""))
     }
 
+    /**
+     * A bare id says nothing about what it names, so it is carried through as
+     * [SpotifyRef.Kind.UNKNOWN] for the page itself to settle — rather than
+     * guessed at here, where a wrong guess reads as "no such playlist".
+     */
+    @Test
+    fun bareIdIsUnknownRatherThanGuessed() {
+        assertEquals(
+            SpotifyRef(playlist, SpotifyRef.Kind.UNKNOWN),
+            SpotifyLink.parse(playlist),
+        )
+        assertEquals(
+            SpotifyRef(playlist, SpotifyRef.Kind.UNKNOWN),
+            SpotifyLink.parse("  $playlist  "),
+        )
+    }
+
     /** A base-62 check, not just a non-empty one: a typo'd id is a 404, not a track list. */
     @Test
     fun rejectsIdsOfTheWrongShape() {
