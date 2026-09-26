@@ -67,6 +67,19 @@ class PlaylistLinkTest {
         )
     }
 
+    /**
+     * A real listener-supplied link, of the shape the Spotify app and the web
+     * player actually hand over — `?si=` share token included, since that is what
+     * comes in on a share and it must not end up in the request path.
+     */
+    @Test
+    fun realSharedLink() {
+        assertEquals(
+            SpotifyRef("0rhj3YhzLUz8zqg1wQX7nf", SpotifyRef.Kind.PLAYLIST),
+            SpotifyLink.parse("https://open.spotify.com/playlist/0rhj3YhzLUz8zqg1wQX7nf?si=f1a2b3c4d5e6"),
+        )
+    }
+
     @Test
     fun rejectsNonSpotifyLinks() {
         assertNull(SpotifyLink.parse("https://music.youtube.com/playlist/OLAK5uy_abc"))
